@@ -52,6 +52,25 @@ class ActionResponse(BaseModel):
     action_taken: str
     evidence_cited: List[str]
 
+# --- ADD THESE ADDITIONAL SCHEMAS FOR A2A COMPLIANCE ---
+class A2AMessageWrapper(BaseModel):
+    message_id: str = Field(..., alias="id")
+    type: str = Field(..., description="The type of message protocol (e.g., 'invoice.package.v1')")
+    sender: str
+    recipient: str
+    timestamp: str
+    payload: InvoicePackage = Field(..., description="The nested functional payload package containing the invoice parameters")
+
+    class Config:
+        populate_by_name = True
+
+class A2AMessageResponse(BaseModel):
+    id: str
+    type: str
+    timestamp: str
+    status: str
+    data: ActionResponse
+
 # --- APP INITIALIZATION WITH LIFESPAN ---
 app = FastAPI(title="HTTPS Secure Invoice Agent", version="1.0.0", lifespan=lifespan)
 
@@ -61,21 +80,39 @@ async def get_db():
 
 from fastapi.responses import JSONResponse
 
-# --- A2A COMPLIANCE HANDSHAKE (AGENT CARD) ---
+# --- A2A MESSAGE RECEIVER ROUTE ---
+@app.post("/message:send", response_model=A2AMessageResponse, status_code=status.HTTP_200_OK)
+async def handle_a2a_message(envelope: A2AMessageWrapper, db: AsyncSession = Depends(get_db)):
+    """
+    Standardized A2A asynchronous messaging interface wrapper.
+    Intercepts protocol-wrapped payloads, strips envelopes, runs internal agent actions, 
+    and packages results inside the expected outbox container.
+    """
+    pkg = envelope.payload
+    
+    # 1. Process via existing idempotency and logic workflow engine
+    # Reuses the exact core double-payment protection pipeline built previously
+    invoice_result = await process_invoice_package(pkg, db)
+    
+    # 2. Package inside structural A2A compliant envelope response
+    return A2AMessageResponse(
+        id=f"msg_res_{envelope.message_id}",
+        type=f"{envelope.type}.response",
+        timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+        status="SUCCESS",
+        data=invoice_result
+    )
+
+
 @app.get("/.well-known/agent-card.json", tags=["Compliance"])
 async def get_agent_card():
-    """
-    Exposes the A2A Agent Card to satisfy automated validation test batteries.
-    Provides structural metadata regarding endpoint locations, schemas, and capabilities.
-    """
     card_metadata = {
         "name": "Secure HTTPS Invoice Processing Agent",
         "description": "Validates business compliance rules, limits, and handles secure ledger execution layers.",
         "version": "1.0.0",
         "supportedInterfaces": [
             {
-                # Replace with your actual deployment URL or keep relative paths depending on environment setup
-                "url": "/api/v1/invoice/process",
+                "url": "/message:send",  # <-- Changed from direct route to A2A standard pathway
                 "protocolBinding": "HTTP+JSON",
                 "protocolVersion": "1.0"
             }
