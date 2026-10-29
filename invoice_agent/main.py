@@ -59,6 +59,45 @@ async def get_db():
     async with async_session() as session:
         yield session
 
+from fastapi.responses import JSONResponse
+
+# --- A2A COMPLIANCE HANDSHAKE (AGENT CARD) ---
+@app.get("/.well-known/agent-card.json", tags=["Compliance"])
+async def get_agent_card():
+    """
+    Exposes the A2A Agent Card to satisfy automated validation test batteries.
+    Provides structural metadata regarding endpoint locations, schemas, and capabilities.
+    """
+    card_metadata = {
+        "name": "Secure HTTPS Invoice Processing Agent",
+        "description": "Validates business compliance rules, limits, and handles secure ledger execution layers.",
+        "version": "1.0.0",
+        "supportedInterfaces": [
+            {
+                # Replace with your actual deployment URL or keep relative paths depending on environment setup
+                "url": "/api/v1/invoice/process",
+                "protocolBinding": "HTTP+JSON",
+                "protocolVersion": "1.0"
+            }
+        ],
+        "capabilities": {
+            "streaming": False,
+            "pushNotifications": False,
+            "extendedAgentCard": False
+        },
+        "defaultInputModes": ["application/json"],
+        "defaultOutputModes": ["application/json"],
+        "skills": [
+            {
+                "id": "invoice-validation",
+                "name": "Invoice Compliance Parser",
+                "description": "Verifies proof of delivery records, ledger authorization keys, and manager budget limit pools.",
+                "tags": ["finance", "compliance", "accounting"]
+            }
+        ]
+    }
+    return JSONResponse(content=card_metadata, status_code=200)
+
 # --- BUSINESS CRITERIA LOGIC ENGINE ---
 def evaluate_business_action(pkg: InvoicePackage) -> tuple[str, list[str]]:
     evidence = []
